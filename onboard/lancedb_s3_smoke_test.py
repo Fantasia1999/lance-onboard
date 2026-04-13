@@ -56,3 +56,7 @@ def main() -> None:
 
     db.drop_database()
     print("lancedb-s3-smoke-test: ok")
+
+
+if __name__ == "__main__":
+    main()

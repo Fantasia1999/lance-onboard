@@ -15,6 +15,14 @@ fi
 
 ensure_minio_dirs
 
+if [[ -x "$MINIO_BIN_DIR/minio" && -x "$MINIO_BIN_DIR/mcli" ]]; then
+  echo "MinIO binaries already installed:"
+  echo "  minio: $("$MINIO_BIN_DIR/minio" --version 2>&1 | head -n1)"
+  echo "  mcli:  $("$MINIO_BIN_DIR/mcli" --version 2>&1 | head -n1)"
+  echo "To reinstall, remove $MINIO_BIN_DIR/{minio,mcli} and re-run."
+  exit 0
+fi
+
 MINIO_ARCHIVE_URL="$(resolve_release_asset "$PGSTY_MINIO_REPO" "$PGSTY_MINIO_RELEASE" "linux_amd64.tar.gz")"
 MINIO_CHECKSUMS_URL="$(resolve_release_asset "$PGSTY_MINIO_REPO" "$PGSTY_MINIO_RELEASE" "checksums.txt")"
 MC_ARCHIVE_URL="$(resolve_release_asset "$PGSTY_MC_REPO" "$PGSTY_MC_RELEASE" "linux_amd64.tar.gz")"

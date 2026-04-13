@@ -33,7 +33,7 @@ fi
 
 if [[ -z "${PYTHON_BIN:-}" ]]; then
   if command -v uv >/dev/null 2>&1; then
-    UV_PYTHON_BIN="$(uv python find 3.12 2>/dev/null || true)"
+    UV_PYTHON_BIN="$(uv python find "${PYTHON_VERSION:-3.12}" 2>/dev/null || true)"
     if [[ -n "${UV_PYTHON_BIN:-}" && -x "${UV_PYTHON_BIN:-}" ]]; then
       export PYTHON_BIN="$UV_PYTHON_BIN"
     fi

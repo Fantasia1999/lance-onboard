@@ -21,9 +21,10 @@ if [[ -z "${PYTHON_BIN:-}" || ! -x "${PYTHON_BIN:-}" ]]; then
   exit 1
 fi
 
-echo "verify-toolchain: python=$PYTHON_BIN"
-echo "verify-toolchain: cargo=$(command -v cargo)"
-echo "verify-toolchain: protoc=$(command -v protoc)"
+echo "verify-toolchain: python=$PYTHON_BIN ($("$PYTHON_BIN" --version 2>&1))"
+echo "verify-toolchain: cargo=$(command -v cargo) ($(cargo --version 2>&1))"
+echo "verify-toolchain: rustc=$(command -v rustc) ($(rustc --version 2>&1))"
+echo "verify-toolchain: protoc=$(command -v protoc) ($(protoc --version 2>&1))"
 echo "verify-toolchain: CARGO_BUILD_JOBS=$CARGO_BUILD_JOBS"
 
 "$PYTHON_BIN" "$SCRIPT_DIR/python_env_check.py"

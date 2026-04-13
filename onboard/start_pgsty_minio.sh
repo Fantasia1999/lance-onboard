@@ -16,7 +16,7 @@ if is_minio_running; then
 else
   rm -f "$MINIO_PID_FILE"
 
-  if ss -ltn | rg -q ":${MINIO_PORT}\\b|:${MINIO_CONSOLE_PORT}\\b"; then
+  if ss -ltn | grep -qE ":(${MINIO_PORT}|${MINIO_CONSOLE_PORT})[[:space:]]"; then
     echo "Port ${MINIO_PORT} or ${MINIO_CONSOLE_PORT} is already in use." >&2
     echo "Override MINIO_PORT / MINIO_CONSOLE_PORT in onboard/minio.env and retry." >&2
     exit 1
