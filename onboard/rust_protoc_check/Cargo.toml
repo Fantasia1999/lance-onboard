@@ -1,0 +1,13 @@
+[package]
+name = "rust_protoc_check"
+version = "0.1.0"
+edition = "2024"
+build = "build.rs"
+
+[dependencies]
+prost = "0.14"
+
+[build-dependencies]
+prost-build = "0.14"
+
+[workspace]

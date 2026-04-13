@@ -1,0 +1,14 @@
+# Copy the contents of this file into:
+#   ${CARGO_HOME:-$HOME/.cargo}/config.toml
+#
+# TUNA sparse-index guide:
+# https://mirrors.tuna.tsinghua.edu.cn/help/crates.io-index/
+
+[source.crates-io]
+replace-with = "mirror"
+
+[source.mirror]
+registry = "sparse+https://mirrors.tuna.tsinghua.edu.cn/crates.io-index/"
+
+[registries.mirror]
+index = "sparse+https://mirrors.tuna.tsinghua.edu.cn/crates.io-index/"

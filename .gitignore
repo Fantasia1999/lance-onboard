@@ -1,0 +1,17 @@
+# Root-level helper artifacts
+/onboard/mirror.env
+/onboard/minio.env
+/onboard/__pycache__/
+/onboard/**/*.pyc
+/onboard/rust_native_check/target/
+/onboard/rust_native_check/Cargo.lock
+/onboard/rust_protoc_check/target/
+/onboard/rust_protoc_check/Cargo.lock
+/local/
+
+# Common local editor / OS noise
+.DS_Store
+Thumbs.db
+
+# ignore lancedb codebase
+/lancedb/
