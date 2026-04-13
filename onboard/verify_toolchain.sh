@@ -12,9 +12,50 @@ require_command() {
   fi
 }
 
+linux_c_toolchain_hint() {
+  local os_id=""
+  local os_like=""
+
+  if [[ -f /etc/os-release ]]; then
+    # shellcheck source=/dev/null
+    source /etc/os-release
+    os_id="${ID:-}"
+    os_like="${ID_LIKE:-}"
+  fi
+
+  case " ${os_like} ${os_id} " in
+    *" fedora "*|*" rhel "*|*" centos "*|*" rocky "*|*" almalinux "*)
+      echo "Install GCC/Make first. On Fedora/RHEL/CentOS/Rocky/AlmaLinux, run: sudo dnf install -y gcc gcc-c++ make" >&2
+      echo "If you are on an older RHEL/CentOS release without dnf, use: sudo yum install -y gcc gcc-c++ make" >&2
+      ;;
+    *)
+      echo "Install GCC/Make first. On Debian/Ubuntu/WSL, run: sudo apt update && sudo apt install -y build-essential" >&2
+      echo "On Fedora/RHEL/CentOS/Rocky/AlmaLinux, run: sudo dnf install -y gcc gcc-c++ make" >&2
+      ;;
+  esac
+}
+
+require_system_c_toolchain() {
+  if command -v cc >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "Missing required system C toolchain: 'cc' was not found on PATH." >&2
+  case "$(uname -s)" in
+    Linux)
+      linux_c_toolchain_hint
+      ;;
+    Darwin)
+      echo "Install Xcode Command Line Tools first: xcode-select --install" >&2
+      ;;
+  esac
+  exit 1
+}
+
 require_command cargo
 require_command rustc
 require_command protoc
+require_system_c_toolchain
 
 if [[ -z "${PYTHON_BIN:-}" || ! -x "${PYTHON_BIN:-}" ]]; then
   echo "Missing required Python interpreter. Run onboard/install_prereqs.sh first." >&2

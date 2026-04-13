@@ -30,12 +30,36 @@ The workflow tries hard not to depend on `apt`, `yum`, `dnf`, or another
 distro-specific package manager. By default it installs Python, Rust, `protoc`,
 and MinIO-related tooling into user-local directories.
 
+When a local `lancedb` checkout includes `rust-toolchain.toml` or
+`rust-toolchain`, the Rust bootstrap flow installs that exact toolchain instead
+of blindly following the latest `stable` release.
+
 It still assumes the machine already has a few base utilities:
 
 - `bash`
 - `curl`
 - `tar`
 - common coreutils such as `mkdir`, `mktemp`, `find`, and `install`
+- a system C toolchain available as `cc` when compiling Rust native crates or the Python extension
+
+On Debian/Ubuntu/WSL, install the C toolchain with:
+
+```bash
+sudo apt update
+sudo apt install -y build-essential
+```
+
+On Fedora/RHEL/CentOS/Rocky/AlmaLinux, install it with:
+
+```bash
+sudo dnf install -y gcc gcc-c++ make
+```
+
+On older RHEL/CentOS releases without `dnf`, use:
+
+```bash
+sudo yum install -y gcc gcc-c++ make
+```
 
 ## Quick Start
 

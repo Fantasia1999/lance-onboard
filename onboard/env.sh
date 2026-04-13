@@ -16,6 +16,36 @@ prepend_path_once() {
   esac
 }
 
+python_version_ge() {
+  local python_bin="$1"
+  local min_version="$2"
+  local current_version
+  local IFS=.
+  local -a current_parts min_parts
+  local i
+
+  [[ -n "$python_bin" && -x "$python_bin" ]] || return 1
+
+  current_version="$("$python_bin" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")' 2>/dev/null || true)"
+  [[ -n "$current_version" ]] || return 1
+
+  current_parts=($current_version)
+  min_parts=($min_version)
+
+  for (( i = 0; i < ${#min_parts[@]}; i++ )); do
+    local current_part="${current_parts[i]:-0}"
+    local min_part="${min_parts[i]:-0}"
+    if (( current_part > min_part )); then
+      return 0
+    fi
+    if (( current_part < min_part )); then
+      return 1
+    fi
+  done
+
+  return 0
+}
+
 detect_build_jobs() {
   if command -v nproc >/dev/null 2>&1; then
     nproc
@@ -40,18 +70,39 @@ fi
 prepend_path_once "$HOME/.local/bin"
 prepend_path_once "$HOME/.cargo/bin"
 
+PYTHON_MIN_VERSION="${PYTHON_MIN_VERSION:-3.10}"
+
+if [[ -n "${PYTHON_BIN:-}" ]] && ! python_version_ge "${PYTHON_BIN:-}" "$PYTHON_MIN_VERSION"; then
+  unset PYTHON_BIN
+fi
+
 if [[ -z "${PYTHON_BIN:-}" ]]; then
   if command -v uv >/dev/null 2>&1; then
     UV_PYTHON_BIN="$(uv python find "${PYTHON_VERSION:-3.12}" 2>/dev/null || true)"
-    if [[ -n "${UV_PYTHON_BIN:-}" && -x "${UV_PYTHON_BIN:-}" ]]; then
+    if python_version_ge "${UV_PYTHON_BIN:-}" "$PYTHON_MIN_VERSION"; then
       export PYTHON_BIN="$UV_PYTHON_BIN"
     fi
   fi
 
   if [[ -z "${PYTHON_BIN:-}" ]] && command -v python3.12 >/dev/null 2>&1; then
-    export PYTHON_BIN="$(command -v python3.12)"
-  elif [[ -z "${PYTHON_BIN:-}" ]] && command -v python3 >/dev/null 2>&1; then
-    export PYTHON_BIN="$(command -v python3)"
+    PYTHON_CANDIDATE="$(command -v python3.12)"
+    if python_version_ge "$PYTHON_CANDIDATE" "$PYTHON_MIN_VERSION"; then
+      export PYTHON_BIN="$PYTHON_CANDIDATE"
+    fi
+  fi
+
+  if [[ -z "${PYTHON_BIN:-}" ]] && command -v python3 >/dev/null 2>&1; then
+    PYTHON_CANDIDATE="$(command -v python3)"
+    if python_version_ge "$PYTHON_CANDIDATE" "$PYTHON_MIN_VERSION"; then
+      export PYTHON_BIN="$PYTHON_CANDIDATE"
+    fi
+  fi
+
+  if [[ -z "${PYTHON_BIN:-}" ]] && command -v python >/dev/null 2>&1; then
+    PYTHON_CANDIDATE="$(command -v python)"
+    if python_version_ge "$PYTHON_CANDIDATE" "$PYTHON_MIN_VERSION"; then
+      export PYTHON_BIN="$PYTHON_CANDIDATE"
+    fi
   fi
 fi
 

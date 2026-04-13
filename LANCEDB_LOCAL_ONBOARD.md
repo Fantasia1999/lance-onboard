@@ -119,7 +119,7 @@ Default behavior:
 | Tool | Minimum | Default behavior |
 |---|---|---|
 | Python | >= 3.10 | If missing, bootstrap `uv` first, then install Python 3.12 with `uv` |
-| Rust | >= 1.85.0 | If missing or too old, install or update stable via `rustup` |
+| Rust | >= 1.85.0 | If `lancedb/rust-toolchain.toml` or `rust-toolchain` exists, install that exact Rust toolchain; otherwise install/update `stable` via `rustup` |
 | protoc | >= 34.1 | Download the official zip into `~/.local/opt` and link it into `~/.local/bin` |
 
 The script tries not to require a preinstalled Python. In other words, if the
@@ -146,6 +146,7 @@ It also supports these overrides:
 - `PYTHON_VERSION`
 - `PYTHON_MIN_VERSION`
 - `RUST_MIN_VERSION`
+- `RUST_TOOLCHAIN`
 - `PROTOC_VERSION`
 - `UV_INSTALLER_URL`
 
@@ -332,6 +333,26 @@ First confirm the machine already has:
 
 If any of those are missing, the bootstrap flow cannot continue.
 
+You also need a system C toolchain once Rust starts compiling native crates.
+On Debian/Ubuntu/WSL, install it with:
+
+```bash
+sudo apt update
+sudo apt install -y build-essential
+```
+
+On Fedora/RHEL/CentOS/Rocky/AlmaLinux, install it with:
+
+```bash
+sudo dnf install -y gcc gcc-c++ make
+```
+
+On older RHEL/CentOS releases without `dnf`, use:
+
+```bash
+sudo yum install -y gcc gcc-c++ make
+```
+
 ### `uv` or Python was installed but the current shell still cannot find it
 
 Run:
@@ -342,6 +363,50 @@ source onboard/env.sh
 
 `env.sh` now prepends `~/.local/bin` automatically, so you usually do not need
 to edit your shell profile just to continue onboarding.
+
+### `verify_toolchain.sh` still picks an older Python
+
+First clear any shell overrides, then reload the helper environment:
+
+```bash
+unset PYTHON_BIN PYO3_PYTHON
+source onboard/env.sh
+echo "$PYTHON_BIN"
+bash onboard/verify_toolchain.sh
+```
+
+If `echo "$PYTHON_BIN"` still points at `/usr/bin/python3`, your shell profile
+is likely exporting an old interpreter path somewhere else.
+
+### `verify_toolchain.sh` fails with `linker 'cc' not found`
+
+Rust can be installed entirely under your home directory, but native crates
+still need a system C compiler and linker.
+
+On Debian/Ubuntu/WSL, run:
+
+```bash
+sudo apt update
+sudo apt install -y build-essential
+```
+
+On Fedora/RHEL/CentOS/Rocky/AlmaLinux, run:
+
+```bash
+sudo dnf install -y gcc gcc-c++ make
+```
+
+On older RHEL/CentOS releases without `dnf`, use:
+
+```bash
+sudo yum install -y gcc gcc-c++ make
+```
+
+Then retry:
+
+```bash
+bash onboard/verify_toolchain.sh
+```
 
 ### `protoc: Permission denied`
 

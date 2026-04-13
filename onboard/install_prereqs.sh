@@ -63,14 +63,65 @@ detect_protoc_arch() {
   esac
 }
 
+detect_repo_rust_toolchain() {
+  local repo_root="${LANCEDB_REPO:-$PROJECT_ROOT/lancedb}"
+  local toolchain_file=""
+  local channel=""
+
+  if [[ -f "$repo_root/rust-toolchain.toml" ]]; then
+    toolchain_file="$repo_root/rust-toolchain.toml"
+  elif [[ -f "$repo_root/rust-toolchain" ]]; then
+    toolchain_file="$repo_root/rust-toolchain"
+  else
+    return 1
+  fi
+
+  channel="$(sed -n 's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$toolchain_file" | head -n 1)"
+  if [[ -n "$channel" ]]; then
+    printf "%s" "$channel"
+    return 0
+  fi
+
+  channel="$(sed -n '/^[[:space:]]*#/d; /^[[:space:]]*$/d; /^[[:space:]]*\[/d; s/^[[:space:]]*//; s/[[:space:]]*$//; p; q' "$toolchain_file")"
+  if [[ -n "$channel" ]]; then
+    printf "%s" "$channel"
+    return 0
+  fi
+
+  return 1
+}
+
+rust_toolchain_requires_exact_version() {
+  [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-].+)?$ ]]
+}
+
+rust_toolchain_installed() {
+  local expected="$1"
+  local installed=""
+
+  while IFS= read -r installed; do
+    installed="${installed%% *}"
+    case "$installed" in
+      "$expected"|"$expected"-*)
+        return 0
+        ;;
+    esac
+  done < <(rustup toolchain list)
+
+  return 1
+}
+
 # ── Tuneable defaults ────────────────────────────────────────────────────
 require_command curl
 
+PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 UV_INSTALLER_URL="${UV_INSTALLER_URL:-https://astral.sh/uv/install.sh}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
 PYTHON_MIN_VERSION="${PYTHON_MIN_VERSION:-3.10}"
 # Rust edition 2024 (used by helper crates) requires >= 1.85
 RUST_MIN_VERSION="${RUST_MIN_VERSION:-1.85.0}"
+RUST_TOOLCHAIN="${RUST_TOOLCHAIN:-$(detect_repo_rust_toolchain || true)}"
+RUST_TOOLCHAIN="${RUST_TOOLCHAIN:-stable}"
 PROTOC_VERSION="${PROTOC_VERSION:-34.1}"
 
 _PROTOC_OS="$(detect_protoc_os)"
@@ -99,6 +150,45 @@ ensure_uv() {
   fi
 
   fail "uv installation completed but 'uv' is still not on PATH."
+}
+
+linux_c_toolchain_hint() {
+  local os_id=""
+  local os_like=""
+
+  if [[ -f /etc/os-release ]]; then
+    # shellcheck source=/dev/null
+    source /etc/os-release
+    os_id="${ID:-}"
+    os_like="${ID_LIKE:-}"
+  fi
+
+  case " ${os_like} ${os_id} " in
+    *" fedora "*|*" rhel "*|*" centos "*|*" rocky "*|*" almalinux "*)
+      warn "Install GCC/Make before building native crates. On Fedora/RHEL/CentOS/Rocky/AlmaLinux: sudo dnf install -y gcc gcc-c++ make"
+      warn "If you are on an older RHEL/CentOS release without dnf: sudo yum install -y gcc gcc-c++ make"
+      ;;
+    *)
+      warn "Install GCC/Make before building native crates. On Debian/Ubuntu/WSL: sudo apt update && sudo apt install -y build-essential"
+      warn "On Fedora/RHEL/CentOS/Rocky/AlmaLinux: sudo dnf install -y gcc gcc-c++ make"
+      ;;
+  esac
+}
+
+warn_if_missing_system_c_toolchain() {
+  if command -v cc >/dev/null 2>&1; then
+    return 0
+  fi
+
+  warn "System C toolchain is missing: 'cc' was not found on PATH"
+  case "$(uname -s)" in
+    Linux)
+      linux_c_toolchain_hint
+      ;;
+    Darwin)
+      warn "Install Xcode Command Line Tools before building native crates: xcode-select --install"
+      ;;
+  esac
 }
 
 refresh_python_bin() {
@@ -168,7 +258,15 @@ _rust_satisfied=false
 
 if command -v rustc >/dev/null 2>&1; then
   _rust_ver="$(rustc --version | sed 's/rustc \([^ ]*\).*/\1/')"
-  if version_ge "$_rust_ver" "$RUST_MIN_VERSION"; then
+  if rust_toolchain_requires_exact_version "$RUST_TOOLCHAIN"; then
+    if [[ "$_rust_ver" == "$RUST_TOOLCHAIN" ]]; then
+      skip_msg "Rust $_rust_ver already installed (matches repo toolchain)"
+      _rust_satisfied=true
+      SUMMARY+=("Rust    : skipped — repo toolchain $RUST_TOOLCHAIN already present")
+    else
+      warn "Rust $_rust_ver does not match required repo toolchain $RUST_TOOLCHAIN — will install"
+    fi
+  elif version_ge "$_rust_ver" "$RUST_MIN_VERSION"; then
     skip_msg "Rust $_rust_ver already installed (>= $RUST_MIN_VERSION)"
     _rust_satisfied=true
     SUMMARY+=("Rust    : skipped — $_rust_ver already present")
@@ -179,27 +277,32 @@ fi
 
 if ! $_rust_satisfied; then
   if [[ ! -x "$HOME/.cargo/bin/rustup" ]]; then
-    info "Installing Rust (stable) via rustup …"
+    info "Installing Rust ($RUST_TOOLCHAIN) via rustup …"
     curl --retry "$CURL_RETRY_COUNT" --retry-all-errors --retry-delay 2 \
       --proto '=https' --tlsv1.2 -sSf "$RUSTUP_INIT_URL" | \
-      sh -s -- -y --default-toolchain stable --profile minimal
+      sh -s -- -y --default-toolchain "$RUST_TOOLCHAIN" --profile minimal
     # Reload so rustc is visible.
     if [[ -f "$HOME/.cargo/env" ]]; then
       # shellcheck source=/dev/null
       source "$HOME/.cargo/env"
     fi
-    SUMMARY+=("Rust    : installed stable via rustup")
+    SUMMARY+=("Rust    : installed $RUST_TOOLCHAIN via rustup")
   else
-    info "Updating Rust to stable via rustup …"
-    rustup toolchain install stable --profile minimal
-    rustup default stable
-    SUMMARY+=("Rust    : updated to stable via rustup")
+    if rust_toolchain_installed "$RUST_TOOLCHAIN"; then
+      info "Selecting Rust toolchain $RUST_TOOLCHAIN via rustup …"
+    else
+      info "Installing Rust toolchain $RUST_TOOLCHAIN via rustup …"
+      rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+    fi
+    rustup default "$RUST_TOOLCHAIN"
+    SUMMARY+=("Rust    : installed/selected $RUST_TOOLCHAIN via rustup")
   fi
   ok "Rust $(rustc --version | sed 's/rustc \([^ ]*\).*/\1/') ready"
 fi
 
 require_command rustup
 require_command rustc
+warn_if_missing_system_c_toolchain
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  3. protoc
