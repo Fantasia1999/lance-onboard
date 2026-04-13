@@ -1,4 +1,4 @@
-# Lance Hub
+# Lance Onboard
 
 This workspace keeps the upstream `lancedb` source checkout clean while storing
 local onboarding notes and helper scripts at the project root.
