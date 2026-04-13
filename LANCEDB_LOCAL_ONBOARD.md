@@ -16,11 +16,12 @@ Get the local source tree built and usable enough to:
 
 ## Environment Used
 
-- OS: Debian 13 (WSL2)
+- OS: Debian 13 (WSL2) — also tested on Linux x86_64 and macOS aarch64
 - Shell: `bash`
 - CPU parallelism: `12` jobs from `nproc`
 - No preinstalled `python`, `cargo`, `rustc`, or `protoc`
-- `uv` was already available
+- `uv` was already available (`uv` is only required when Python is not
+  pre-installed)
 
 ## User-Local Dependency Install
 
@@ -62,8 +63,20 @@ cd <project-root>
 bash onboard/install_prereqs.sh
 ```
 
-This script respects the mirror-related environment variables from
-`onboard/mirror.env`, including:
+The script is **idempotent** — it detects already-installed tools and skips them
+when they satisfy the minimum version requirements:
+
+| Tool   | Minimum version | Auto-install default  |
+|--------|-----------------|-----------------------|
+| Python | >= 3.10         | 3.12 (via `uv`)      |
+| Rust   | >= 1.85.0       | stable (via `rustup`) |
+| protoc | >= 34.1         | 34.1                  |
+
+OS and CPU architecture (x86_64 / aarch64, Linux / macOS) are detected
+automatically for the `protoc` download. The script prints a coloured summary
+at the end showing what was skipped and what was installed.
+
+The following environment variables from `onboard/mirror.env` are respected:
 
 - `PIP_INDEX_URL`
 - `UV_DEFAULT_INDEX`
@@ -72,22 +85,35 @@ This script respects the mirror-related environment variables from
 - `RUSTUP_UPDATE_ROOT`
 - `PROTOC_DOWNLOAD_URL`
 
-### 1. Install Python 3.12 with uv
+You can also tune minimum versions and install targets:
+
+- `PYTHON_VERSION` — Python version to install when none is found (default `3.12`)
+- `PYTHON_MIN_VERSION` — skip install when existing Python is >= this (default `3.10`)
+- `RUST_MIN_VERSION` — skip install when existing Rust is >= this (default `1.85.0`)
+- `PROTOC_VERSION` — protoc version to install / check (default `34.1`)
+
+### Manual install: 1. Python (>= 3.10)
+
+If you already have a Python >= 3.10 interpreter, the script will skip this
+step. Otherwise, install with `uv`:
 
 ```bash
 uv python install 3.12
 ```
 
-### 2. Install Rust 1.94.0 with rustup
+### Manual install: 2. Rust (>= 1.85.0)
 
-This repo pins the Rust toolchain in `rust-toolchain.toml`.
+Any Rust toolchain >= 1.85.0 works. If you already have one, the script skips
+this step. Otherwise:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-  sh -s -- -y --default-toolchain 1.94.0 --profile minimal
+  sh -s -- -y --default-toolchain stable --profile minimal
 ```
 
-### 3. Install `protoc` in `$HOME/.local`
+### Manual install: 3. `protoc` in `$HOME/.local`
+
+The script auto-detects the platform. For a manual install on Linux x86_64:
 
 ```bash
 PROTOC_VERSION=34.1
