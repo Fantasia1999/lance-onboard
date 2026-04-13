@@ -9,7 +9,7 @@ This repository keeps local onboarding scripts and notes outside the upstream
 - `lancedb/`: local checkout of the `lancedb` source repository
 - `onboard/`: helper scripts for environment setup, validation, local builds,
   MinIO setup, and smoke tests
-- `LANCEDB_LOCAL_ONBOARD.md`: the longer step-by-step guide with troubleshooting
+- `LANCEDB_LOCAL_SETUP.md`: the longer step-by-step guide with troubleshooting
 - `local/`: runtime artifacts created by the helper scripts and ignored by Git
 
 If your `lancedb` checkout is not at `./lancedb`, set this in
@@ -117,4 +117,4 @@ bash onboard/stop_pgsty_minio.sh
 ## More Detail
 
 For the full zero-to-working flow, WSL notes, and troubleshooting, see
-[`LANCEDB_LOCAL_ONBOARD.md`](/home/wcl/workspace/dev/lance-onboard/LANCEDB_LOCAL_ONBOARD.md).
+[`LANCEDB_LOCAL_SETUP.md`](/home/wcl/workspace/dev/lance-onboard/LANCEDB_LOCAL_SETUP.md).

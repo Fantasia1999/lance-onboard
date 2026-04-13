@@ -19,7 +19,7 @@ The simplest layout looks like this:
 
 ```text
 <project-root>/
-├── LANCEDB_LOCAL_ONBOARD.md
+├── LANCEDB_LOCAL_SETUP.md
 ├── README.md
 ├── onboard/
 └── lancedb/
