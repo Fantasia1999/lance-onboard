@@ -6,7 +6,6 @@ source "$SCRIPT_DIR/minio_common.sh"
 
 require_command curl
 require_command tar
-require_command sha256sum
 
 if [[ -z "${PYTHON_BIN:-}" || ! -x "${PYTHON_BIN:-}" ]]; then
   echo "Missing required Python interpreter. Run onboard/install_prereqs.sh first." >&2
@@ -23,9 +22,11 @@ if [[ -x "$MINIO_BIN_DIR/minio" && -x "$MINIO_BIN_DIR/mcli" ]]; then
   exit 0
 fi
 
-MINIO_ARCHIVE_URL="$(resolve_release_asset "$PGSTY_MINIO_REPO" "$PGSTY_MINIO_RELEASE" "linux_amd64.tar.gz")"
+ARCHIVE_SUFFIX="${MINIO_ARCHIVE_OS}_${MINIO_ARCHIVE_ARCH}.tar.gz"
+
+MINIO_ARCHIVE_URL="$(resolve_release_asset "$PGSTY_MINIO_REPO" "$PGSTY_MINIO_RELEASE" "$ARCHIVE_SUFFIX")"
 MINIO_CHECKSUMS_URL="$(resolve_release_asset "$PGSTY_MINIO_REPO" "$PGSTY_MINIO_RELEASE" "checksums.txt")"
-MC_ARCHIVE_URL="$(resolve_release_asset "$PGSTY_MC_REPO" "$PGSTY_MC_RELEASE" "linux_amd64.tar.gz")"
+MC_ARCHIVE_URL="$(resolve_release_asset "$PGSTY_MC_REPO" "$PGSTY_MC_RELEASE" "$ARCHIVE_SUFFIX")"
 MC_CHECKSUMS_URL="$(resolve_release_asset "$PGSTY_MC_REPO" "$PGSTY_MC_RELEASE" "checksums.txt")"
 
 MINIO_ARCHIVE="$MINIO_DOWNLOAD_DIR/$(basename "$MINIO_ARCHIVE_URL")"
@@ -44,5 +45,6 @@ verify_checksum_from_file "$MC_CHECKSUMS" "$MC_ARCHIVE"
 extract_binary_from_archive "$MINIO_ARCHIVE" "minio" "$MINIO_BIN_DIR/minio"
 extract_binary_from_archive "$MC_ARCHIVE" "mcli" "$MINIO_BIN_DIR/mcli"
 
+echo "Installed pgsty/minio assets for ${MINIO_ARCHIVE_OS}_${MINIO_ARCHIVE_ARCH}"
 "$MINIO_BIN_DIR/minio" --version
 "$MINIO_BIN_DIR/mcli" --version

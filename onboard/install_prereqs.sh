@@ -25,6 +25,14 @@ require_command() {
   fi
 }
 
+prepend_path_once() {
+  local path_entry="$1"
+  case ":$PATH:" in
+    *":$path_entry:"*) ;;
+    *) export PATH="$path_entry:$PATH" ;;
+  esac
+}
+
 # ── Version comparison: returns 0 when $1 >= $2 (dot-separated) ─────────
 version_ge() {
   local IFS=.
@@ -58,6 +66,7 @@ detect_protoc_arch() {
 # ── Tuneable defaults ────────────────────────────────────────────────────
 require_command curl
 
+UV_INSTALLER_URL="${UV_INSTALLER_URL:-https://astral.sh/uv/install.sh}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
 PYTHON_MIN_VERSION="${PYTHON_MIN_VERSION:-3.10}"
 # Rust edition 2024 (used by helper crates) requires >= 1.85
@@ -72,6 +81,46 @@ PROTOC_DOWNLOAD_URL="${PROTOC_DOWNLOAD_URL:-https://github.com/protocolbuffers/p
 CURL_RETRY_COUNT="${CURL_RETRY_COUNT:-5}"
 
 SUMMARY=()   # collects one-line descriptions of what happened
+
+ensure_uv() {
+  if command -v uv >/dev/null 2>&1; then
+    return 0
+  fi
+
+  info "Installing uv via the official installer …"
+  prepend_path_once "$HOME/.local/bin"
+  curl --retry "$CURL_RETRY_COUNT" --retry-all-errors --retry-delay 2 -LsSf \
+    "$UV_INSTALLER_URL" | env UV_NO_MODIFY_PATH=1 sh
+
+  if command -v uv >/dev/null 2>&1; then
+    ok "uv installed at $(command -v uv)"
+    SUMMARY+=("uv      : installed via official installer")
+    return 0
+  fi
+
+  fail "uv installation completed but 'uv' is still not on PATH."
+}
+
+refresh_python_bin() {
+  local candidate=""
+
+  if command -v uv >/dev/null 2>&1; then
+    candidate="$(uv python find "$PYTHON_VERSION" 2>/dev/null || true)"
+  fi
+
+  if [[ -z "$candidate" ]] && command -v python3 >/dev/null 2>&1; then
+    candidate="$(command -v python3)"
+  fi
+
+  if [[ -z "$candidate" ]] && command -v python >/dev/null 2>&1; then
+    candidate="$(command -v python)"
+  fi
+
+  if [[ -n "$candidate" && -x "$candidate" ]]; then
+    export PYTHON_BIN="$candidate"
+    export PYO3_PYTHON="${PYO3_PYTHON:-$candidate}"
+  fi
+}
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  1. Python
@@ -95,14 +144,13 @@ for _candidate in "${PYTHON_BIN:-}" python3 python; do
 done
 
 if ! $_python_satisfied; then
-  if command -v uv >/dev/null 2>&1; then
-    info "Installing Python $PYTHON_VERSION via uv …"
-    uv python install "$PYTHON_VERSION"
-    ok "Python $PYTHON_VERSION installed via uv"
-    SUMMARY+=("Python  : installed $PYTHON_VERSION via uv")
-  else
-    fail "No suitable Python (>= $PYTHON_MIN_VERSION) found and 'uv' is not available for auto-install."
-  fi
+  ensure_uv
+
+  info "Installing Python $PYTHON_VERSION via uv …"
+  uv python install "$PYTHON_VERSION"
+  refresh_python_bin
+  ok "Python $PYTHON_VERSION installed via uv"
+  SUMMARY+=("Python  : installed $PYTHON_VERSION via uv")
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════

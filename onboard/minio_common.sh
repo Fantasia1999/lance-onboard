@@ -55,6 +55,41 @@ require_command() {
   fi
 }
 
+detect_release_os() {
+  case "$(uname -s)" in
+    Linux) echo "linux" ;;
+    Darwin) echo "darwin" ;;
+    *)
+      echo "Unsupported OS for pgsty/minio helper scripts: $(uname -s)" >&2
+      exit 1
+      ;;
+  esac
+}
+
+detect_release_arch() {
+  case "$(uname -m)" in
+    x86_64|amd64) echo "amd64" ;;
+    aarch64|arm64) echo "arm64" ;;
+    *)
+      echo "Unsupported architecture for pgsty/minio helper scripts: $(uname -m)" >&2
+      exit 1
+      ;;
+  esac
+}
+
+sha256_file() {
+  local artifact="$1"
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$artifact" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$artifact" | awk '{print $1}'
+  else
+    echo "Missing required command: sha256sum or shasum" >&2
+    exit 1
+  fi
+}
+
 ensure_minio_dirs() {
   mkdir -p \
     "$MINIO_BIN_DIR" \
@@ -120,7 +155,7 @@ verify_checksum_from_file() {
   fi
 
   local actual
-  actual="$(sha256sum "$artifact" | awk '{print $1}')"
+  actual="$(sha256_file "$artifact")"
   if [[ "$expected" != "$actual" ]]; then
     echo "Checksum mismatch for $artifact_name" >&2
     echo "expected: $expected" >&2
@@ -173,9 +208,86 @@ is_minio_running() {
   if [[ -f "$MINIO_PID_FILE" ]]; then
     local pid
     pid="$(cat "$MINIO_PID_FILE")"
-    if [[ -n "$pid" ]] && kill -0 "$pid" >/dev/null 2>&1; then
+    if [[ -n "$pid" ]] && kill -0 "$pid" >/dev/null 2>&1 && pid_matches_current_minio "$pid"; then
       return 0
     fi
   fi
   return 1
 }
+
+process_cmdline() {
+  local pid="$1"
+
+  if [[ -r "/proc/${pid}/cmdline" ]]; then
+    tr '\0' ' ' < "/proc/${pid}/cmdline"
+    return 0
+  fi
+
+  ps -p "$pid" -o args= 2>/dev/null
+}
+
+pid_matches_current_minio() {
+  local pid="$1"
+  local cmdline
+
+  cmdline="$(process_cmdline "$pid" || true)"
+  if [[ -z "$cmdline" ]]; then
+    return 1
+  fi
+
+  [[ "$cmdline" == *"minio"* && "$cmdline" == *"$MINIO_DATA_DIR"* ]]
+}
+
+is_tcp_port_busy() {
+  local host="$1"
+  local port="$2"
+
+  if command -v ss >/dev/null 2>&1; then
+    if ss -ltn "( sport = :${port} )" 2>/dev/null | tail -n +2 | grep -q .; then
+      return 0
+    fi
+    return 1
+  fi
+
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+    return $?
+  fi
+
+  if command -v netstat >/dev/null 2>&1; then
+    netstat -ltn 2>/dev/null | awk -v port="$port" '
+      NR > 2 && $4 ~ ("(^|[.:])" port "$") { found = 1; exit }
+      END { exit found ? 0 : 1 }
+    '
+    return $?
+  fi
+
+  if [[ -n "${PYTHON_BIN:-}" && -x "${PYTHON_BIN:-}" ]]; then
+    "$PYTHON_BIN" - "$host" "$port" <<'PY'
+import socket
+import sys
+
+host = sys.argv[1]
+port = int(sys.argv[2])
+family = socket.AF_INET6 if ":" in host else socket.AF_INET
+
+with socket.socket(family, socket.SOCK_STREAM) as sock:
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        sock.bind((host, port))
+    except OSError:
+        raise SystemExit(0)
+
+raise SystemExit(1)
+PY
+    return $?
+  fi
+
+  echo "Unable to check whether ${host}:${port} is already in use." >&2
+  return 1
+}
+
+export MINIO_ARCHIVE_OS="${MINIO_ARCHIVE_OS:-$(detect_release_os)}"
+export MINIO_ARCHIVE_ARCH="${MINIO_ARCHIVE_ARCH:-$(detect_release_arch)}"
+export MINIO_ENDPOINT
+export MINIO_CONSOLE_URL

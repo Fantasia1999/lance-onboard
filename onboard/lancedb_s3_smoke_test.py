@@ -6,29 +6,38 @@ import uuid
 import lancedb
 
 
-def required_env(name: str) -> str:
-    value = os.environ.get(name)
-    if not value:
-        raise SystemExit(f"missing required environment variable: {name}")
-    return value
+def first_env(*names: str) -> str | None:
+    for name in names:
+        value = os.environ.get(name)
+        if value:
+            return value
+    return None
+
+
+def required_any_env(*names: str) -> str:
+    value = first_env(*names)
+    if value:
+        return value
+    joined = " / ".join(names)
+    raise SystemExit(f"missing required environment variable: {joined}")
 
 
 def main() -> None:
     bucket = os.environ.get("MINIO_BUCKET", "lancedb-dev")
-    endpoint = (
-        os.environ.get("AWS_ENDPOINT")
-        or os.environ.get("AWS_ENDPOINT_URL")
-        or os.environ.get("MINIO_ENDPOINT")
-    )
+    endpoint = first_env("AWS_ENDPOINT", "AWS_ENDPOINT_URL", "MINIO_ENDPOINT")
     if not endpoint:
-        raise SystemExit("missing AWS_ENDPOINT / AWS_ENDPOINT_URL / MINIO_ENDPOINT")
+        host = os.environ.get("MINIO_HOST", "127.0.0.1")
+        port = os.environ.get("MINIO_PORT", "9000")
+        endpoint = f"http://{host}:{port}"
 
     storage_options = {
-        "allow_http": "true",
-        "aws_access_key_id": required_env("AWS_ACCESS_KEY_ID"),
-        "aws_secret_access_key": required_env("AWS_SECRET_ACCESS_KEY"),
+        "allow_http": os.environ.get("AWS_ALLOW_HTTP", "true"),
+        "aws_access_key_id": required_any_env("AWS_ACCESS_KEY_ID", "MINIO_ROOT_USER"),
+        "aws_secret_access_key": required_any_env(
+            "AWS_SECRET_ACCESS_KEY", "MINIO_ROOT_PASSWORD"
+        ),
         "aws_endpoint": endpoint,
-        "aws_region": os.environ.get("AWS_REGION", os.environ.get("MINIO_REGION", "us-east-1")),
+        "aws_region": first_env("AWS_REGION", "MINIO_REGION") or "us-east-1",
     }
 
     prefix = f"lancedb-s3-smoke-{uuid.uuid4().hex[:8]}"
@@ -54,7 +63,7 @@ def main() -> None:
     if results[0]["item"] != "bar":
         raise SystemExit(f"expected nearest item to be 'bar', got {results[0]['item']}")
 
-    db.drop_database()
+    db.drop_all_tables()
     print("lancedb-s3-smoke-test: ok")
 
 

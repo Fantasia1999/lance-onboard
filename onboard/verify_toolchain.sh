@@ -17,7 +17,7 @@ require_command rustc
 require_command protoc
 
 if [[ -z "${PYTHON_BIN:-}" || ! -x "${PYTHON_BIN:-}" ]]; then
-  echo "Missing required Python interpreter. Set PYTHON_BIN or install python3.12." >&2
+  echo "Missing required Python interpreter. Run onboard/install_prereqs.sh first." >&2
   exit 1
 fi
 

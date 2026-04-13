@@ -16,33 +16,30 @@ if is_minio_running; then
 else
   rm -f "$MINIO_PID_FILE"
 
-  if ss -ltn | grep -qE ":(${MINIO_PORT}|${MINIO_CONSOLE_PORT})[[:space:]]"; then
+  if is_tcp_port_busy "$MINIO_HOST" "$MINIO_PORT" || \
+     is_tcp_port_busy "$MINIO_HOST" "$MINIO_CONSOLE_PORT"; then
     echo "Port ${MINIO_PORT} or ${MINIO_CONSOLE_PORT} is already in use." >&2
     echo "Override MINIO_PORT / MINIO_CONSOLE_PORT in onboard/minio.env and retry." >&2
     exit 1
   fi
 
-  setsid bash -c '
-    echo $$ > "$1"
-    exec env \
-      MINIO_ROOT_USER="$2" \
-      MINIO_ROOT_PASSWORD="$3" \
-      MINIO_SITE_REGION="$4" \
-      "$5" server "$6" \
-        --address "$7" \
-        --console-address "$8"
-  ' bash \
-    "$MINIO_PID_FILE" \
-    "$MINIO_ROOT_USER" \
-    "$MINIO_ROOT_PASSWORD" \
-    "$MINIO_REGION" \
-    "$MINIO_BIN_DIR/minio" \
-    "$MINIO_DATA_DIR" \
-    "${MINIO_HOST}:${MINIO_PORT}" \
-    "${MINIO_HOST}:${MINIO_CONSOLE_PORT}" \
-    >>"$MINIO_LOG_FILE" 2>&1 < /dev/null &
+  nohup env \
+    MINIO_ROOT_USER="$MINIO_ROOT_USER" \
+    MINIO_ROOT_PASSWORD="$MINIO_ROOT_PASSWORD" \
+    MINIO_SITE_REGION="$MINIO_REGION" \
+    "$MINIO_BIN_DIR/minio" server "$MINIO_DATA_DIR" \
+      --address "${MINIO_HOST}:${MINIO_PORT}" \
+      --console-address "${MINIO_HOST}:${MINIO_CONSOLE_PORT}" \
+      >>"$MINIO_LOG_FILE" 2>&1 < /dev/null &
+  MINIO_PID="$!"
+  echo "$MINIO_PID" > "$MINIO_PID_FILE"
 
   sleep 1
+  if ! kill -0 "$MINIO_PID" >/dev/null 2>&1; then
+    echo "pgsty/minio exited early. Check $MINIO_LOG_FILE for details." >&2
+    rm -f "$MINIO_PID_FILE"
+    exit 1
+  fi
 fi
 
 wait_for_http "$MINIO_ENDPOINT/minio/health/live" 30

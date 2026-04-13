@@ -8,6 +8,26 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 MIRROR_ENV_FILE="$SCRIPT_DIR/mirror.env"
 
+prepend_path_once() {
+  local path_entry="$1"
+  case ":$PATH:" in
+    *":$path_entry:"*) ;;
+    *) export PATH="$path_entry:$PATH" ;;
+  esac
+}
+
+detect_build_jobs() {
+  if command -v nproc >/dev/null 2>&1; then
+    nproc
+  elif command -v getconf >/dev/null 2>&1; then
+    getconf _NPROCESSORS_ONLN
+  elif command -v sysctl >/dev/null 2>&1; then
+    sysctl -n hw.ncpu
+  else
+    echo 1
+  fi
+}
+
 if [[ -f "$MIRROR_ENV_FILE" ]]; then
   # shellcheck source=/dev/null
   source "$MIRROR_ENV_FILE"
@@ -17,19 +37,8 @@ if [[ -z "${LANCEDB_REPO:-}" && -d "$PROJECT_ROOT/lancedb" ]]; then
   export LANCEDB_REPO="$PROJECT_ROOT/lancedb"
 fi
 
-if [[ -d "$HOME/.local/bin" ]]; then
-  case ":$PATH:" in
-    *":$HOME/.local/bin:"*) ;;
-    *) export PATH="$HOME/.local/bin:$PATH" ;;
-  esac
-fi
-
-if [[ -d "$HOME/.cargo/bin" ]]; then
-  case ":$PATH:" in
-    *":$HOME/.cargo/bin:"*) ;;
-    *) export PATH="$HOME/.cargo/bin:$PATH" ;;
-  esac
-fi
+prepend_path_once "$HOME/.local/bin"
+prepend_path_once "$HOME/.cargo/bin"
 
 if [[ -z "${PYTHON_BIN:-}" ]]; then
   if command -v uv >/dev/null 2>&1; then
@@ -69,4 +78,4 @@ fi
 
 export UV_HTTP_TIMEOUT="${UV_HTTP_TIMEOUT:-120}"
 export UV_HTTP_RETRIES="${UV_HTTP_RETRIES:-5}"
-export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(nproc)}"
+export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$(detect_build_jobs)}"

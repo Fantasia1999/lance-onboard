@@ -1,307 +1,290 @@
 # LanceDB Local Build Onboard
 
-This note records a full local onboard path for building the Python version of
-LanceDB from source on a clean Debian 13 / WSL2 machine without `sudo`.
+This document matches the helper scripts in `onboard/` and is intended to help
+a beginner bring up a local LanceDB development environment from scratch on
+regular Linux or WSL2, without depending on a distro-specific package manager.
 
-In the commands below, replace `<project-root>` with the local directory that
-contains this document, the `onboard/` helpers, and the `lancedb/` checkout.
+It covers:
+
+- a local LanceDB source build environment
+- a Python-editable local install
+- an optional local MinIO-based S3-compatible environment
+
+This guide assumes your workspace contains:
+
+- this repository
+- a local `lancedb` source checkout
+
+The simplest layout looks like this:
+
+```text
+<project-root>/
+├── LANCEDB_LOCAL_ONBOARD.md
+├── README.md
+├── onboard/
+└── lancedb/
+```
+
+If your `lancedb` checkout is somewhere else, set
+`LANCEDB_REPO=/absolute/path/to/lancedb` in `onboard/mirror.env`.
+
+## Scope
+
+These scripts are primarily aimed at:
+
+- native Linux
+- Linux distributions running inside WSL2
+
+The design goal is "user-local installs, minimal distro assumptions". The
+helpers do not call `apt`, `yum`, `dnf`, `pacman`, or another distro package
+manager directly.
+
+They still assume the machine already has a few basic commands:
+
+- `bash`
+- `curl`
+- `tar`
+- common coreutils such as `mkdir`, `find`, `install`, and `mktemp`
+
+If a machine is missing even those, that is outside what a distro-agnostic
+bootstrap script can realistically cover.
 
 ## Goal
 
-Get the local source tree built and usable enough to:
+The goal is to get all of the following working:
 
-1. verify that the Python / Rust / `protoc` toolchain is ready
-2. compile `lancedb` from source with multi-core builds
-3. run a small local vector-search smoke test
+1. check and install Python / Rust / `protoc`
+2. build the Python package from the local LanceDB source tree
+3. run a local vector-search smoke test
+4. optionally start local MinIO and validate LanceDB against S3-compatible
+   storage
 
-## Environment Used
+## Main Local Build Flow
 
-- OS: Debian 13 (WSL2) — also tested on Linux x86_64 and macOS aarch64
-- Shell: `bash`
-- CPU parallelism: `12` jobs from `nproc`
-- No preinstalled `python`, `cargo`, `rustc`, or `protoc`
-- `uv` was already available (`uv` is only required when Python is not
-  pre-installed)
-
-## User-Local Dependency Install
-
-### Optional: configure mirrors before installing
-
-If your network to GitHub, PyPI, or `crates.io` is unstable, copy the mirror
-template first:
+### 1. Enter the project directory
 
 ```bash
 cd <project-root>
+```
+
+### 2. Optional: configure mirrors
+
+Mirrors are not required by default. Only enable them if access to GitHub,
+PyPI, or `crates.io` is slow or unreliable.
+
+General template:
+
+```bash
 cp onboard/mirror.env.example onboard/mirror.env
 ```
 
-If you want a ready-to-use TUNA preset, use this instead:
+TUNA preset:
 
 ```bash
-cd <project-root>
 cp onboard/mirror.env.tuna onboard/mirror.env
 ```
 
-`onboard/env.sh` will load `onboard/mirror.env` automatically. The template
-already includes TUNA examples for PyPI and Rustup, and keeps Python-download
-and `protoc` mirrors as explicit opt-ins.
-
-If you also want Cargo to use TUNA's sparse index, copy the example into your
-Cargo config:
+If you also want Cargo to use TUNA's sparse index:
 
 ```bash
 mkdir -p "${CARGO_HOME:-$HOME/.cargo}"
 cp onboard/cargo.tuna.config.toml.example "${CARGO_HOME:-$HOME/.cargo}/config.toml"
 ```
 
-### One-command prerequisite install
-
-After optional mirror configuration, install Python, Rust, and `protoc` with:
+### 3. Load the helper environment
 
 ```bash
-cd <project-root>
+source onboard/env.sh
+```
+
+That script does a few important things:
+
+- loads `onboard/mirror.env` automatically if it exists
+- points `LANCEDB_REPO` at `./lancedb` by default
+- prepends `~/.local/bin` and `~/.cargo/bin` to `PATH`
+- tries to discover `PYTHON_BIN`
+- exports `CARGO_BUILD_JOBS`
+
+### 4. Install prerequisites
+
+```bash
 bash onboard/install_prereqs.sh
 ```
 
-The script is **idempotent** — it detects already-installed tools and skips them
-when they satisfy the minimum version requirements:
+This script is idempotent. If a tool already meets the minimum requirement, it
+is skipped.
 
-| Tool   | Minimum version | Auto-install default  |
-|--------|-----------------|-----------------------|
-| Python | >= 3.10         | 3.12 (via `uv`)      |
-| Rust   | >= 1.85.0       | stable (via `rustup`) |
-| protoc | >= 34.1         | 34.1                  |
+Default behavior:
 
-OS and CPU architecture (x86_64 / aarch64, Linux / macOS) are detected
-automatically for the `protoc` download. The script prints a coloured summary
-at the end showing what was skipped and what was installed.
+| Tool | Minimum | Default behavior |
+|---|---|---|
+| Python | >= 3.10 | If missing, bootstrap `uv` first, then install Python 3.12 with `uv` |
+| Rust | >= 1.85.0 | If missing or too old, install or update stable via `rustup` |
+| protoc | >= 34.1 | Download the official zip into `~/.local/opt` and link it into `~/.local/bin` |
 
-The following environment variables from `onboard/mirror.env` are respected:
+The script tries not to require a preinstalled Python. In other words, if the
+machine has `curl` but no `python3`, it can still bootstrap `uv` first and then
+install Python through `uv`.
 
+The script respects these variables from `onboard/mirror.env`:
+
+- `LANCEDB_REPO`
 - `PIP_INDEX_URL`
+- `PIP_EXTRA_INDEX_URL`
 - `UV_DEFAULT_INDEX`
 - `UV_PYTHON_INSTALL_MIRROR`
 - `RUSTUP_DIST_SERVER`
 - `RUSTUP_UPDATE_ROOT`
+- `RUSTUP_INIT_URL`
 - `PROTOC_DOWNLOAD_URL`
+- `CURL_RETRY_COUNT`
+- `PIP_INSTALL_RETRIES`
+- `PIP_INSTALL_TIMEOUT`
 
-You can also tune minimum versions and install targets:
+It also supports these overrides:
 
-- `PYTHON_VERSION` — Python version to install when none is found (default `3.12`)
-- `PYTHON_MIN_VERSION` — skip install when existing Python is >= this (default `3.10`)
-- `RUST_MIN_VERSION` — skip install when existing Rust is >= this (default `1.85.0`)
-- `PROTOC_VERSION` — protoc version to install / check (default `34.1`)
+- `PYTHON_VERSION`
+- `PYTHON_MIN_VERSION`
+- `RUST_MIN_VERSION`
+- `PROTOC_VERSION`
+- `UV_INSTALLER_URL`
 
-### Manual install: 1. Python (>= 3.10)
-
-If you already have a Python >= 3.10 interpreter, the script will skip this
-step. Otherwise, install with `uv`:
-
-```bash
-uv python install 3.12
-```
-
-### Manual install: 2. Rust (>= 1.85.0)
-
-Any Rust toolchain >= 1.85.0 works. If you already have one, the script skips
-this step. Otherwise:
+### 5. Verify the toolchain
 
 ```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-  sh -s -- -y --default-toolchain stable --profile minimal
-```
-
-### Manual install: 3. `protoc` in `$HOME/.local`
-
-The script auto-detects the platform. For a manual install on Linux x86_64:
-
-```bash
-PROTOC_VERSION=34.1
-INSTALL_DIR="$HOME/.local/opt/protoc-$PROTOC_VERSION"
-BIN_DIR="$HOME/.local/bin"
-PY_BIN="$(uv python find 3.12)"
-
-mkdir -p "$INSTALL_DIR" "$BIN_DIR"
-TMP_ZIP="$(mktemp /tmp/protoc.XXXXXX.zip)"
-curl -L \
-  "https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip" \
-  -o "$TMP_ZIP"
-"$PY_BIN" -m zipfile -e "$TMP_ZIP" "$INSTALL_DIR"
-chmod +x "$INSTALL_DIR/bin/protoc"
-ln -sf "$INSTALL_DIR/bin/protoc" "$BIN_DIR/protoc"
-rm -f "$TMP_ZIP"
-protoc --version
-```
-
-## Important WSL / uv Notes
-
-- Prefer the real interpreter from `uv python find 3.12`.
-- Do not rely on `~/.local/bin/python3.12` for `venv` creation on this setup.
-  That shim worked for direct execution, but the child venv ended up with
-  `sys.base_prefix=/install` and `ensurepip` failed.
-- Run temporary venv or smoke-test data under `/tmp`, not a Windows-mounted
-  path.
-- After extracting the official `protoc` zip with Python's `zipfile` module,
-  restore execute permission manually with `chmod +x`.
-
-## Root-Level Helper Scripts
-
-The following helper files live at the project root so the `lancedb` checkout
-stays clean:
-
-- `onboard/env.sh`
-- `onboard/install_prereqs.sh`
-- `onboard/verify_toolchain.sh`
-- `onboard/build_lancedb.sh`
-- `onboard/mirror.env.example`
-- `onboard/mirror.env.tuna`
-- `onboard/cargo.tuna.config.toml.example`
-- `onboard/minio_common.sh`
-- `onboard/minio.env.example`
-- `onboard/install_pgsty_minio.sh`
-- `onboard/start_pgsty_minio.sh`
-- `onboard/stop_pgsty_minio.sh`
-- `onboard/setup_pgsty_minio.sh`
-- `onboard/python_env_check.py`
-- `onboard/rust_native_check/`
-- `onboard/rust_protoc_check/`
-- `onboard/lancedb_smoke_test.py`
-- `onboard/lancedb_s3_smoke_test.py`
-
-## Verify Build Dependencies Before Compiling LanceDB
-
-Source the helper environment and run the toolchain smoke tests:
-
-```bash
-cd <project-root>
-source onboard/env.sh
 bash onboard/verify_toolchain.sh
 ```
 
-What this validates:
+This validates:
 
 - Python version, SSL, SQLite, and `venv` creation
-- Rust compilation and linker / C toolchain health
+- Rust compilation plus linker / native toolchain health
 - `protoc` integration through a tiny `prost-build` example
 
-## Build LanceDB Python Locally
-
-### One-command build
+### 6. Build LanceDB
 
 ```bash
-cd <project-root>
 bash onboard/build_lancedb.sh
 ```
 
-### Equivalent manual steps
+This script will:
 
-Create a venv with the real uv-managed Python:
+- create `lancedb/python/.venv` using `PYTHON_BIN`
+- install `pip` and `maturin`
+- automatically append the required Lance Fury indexes
+- run `maturin develop -j "$CARGO_BUILD_JOBS"` in `lancedb/python`
 
-```bash
-cd <project-root>
-source onboard/env.sh
-"$PYTHON_BIN" -m venv lancedb/python/.venv
-```
+If the `lancedb` repo is not where the script expects it, it will stop and tell
+you to set `LANCEDB_REPO`.
 
-Install `maturin`:
-
-```bash
-lancedb/python/.venv/bin/pip install -U pip maturin
-```
-
-Compile and install the local source tree into that venv with multi-core builds:
+### 7. Run the local smoke test
 
 ```bash
-source onboard/env.sh
-cd lancedb/python
-. .venv/bin/activate
-maturin develop -j "$CARGO_BUILD_JOBS"
-```
-
-If `PIP_EXTRA_INDEX_URL` or `UV_INDEX` is already set in `onboard/mirror.env`,
-keep it. The helper build script will append the required Fury indexes
-automatically.
-
-On the first run in this environment, `maturin develop` completed successfully
-in about `6m 37s`.
-
-## Run the Minimal LanceDB Smoke Test
-
-```bash
-cd <project-root>
-source onboard/env.sh
 lancedb/python/.venv/bin/python -c "import lancedb; print(lancedb.__version__)"
 lancedb/python/.venv/bin/python onboard/lancedb_smoke_test.py
 ```
 
-The smoke test creates a temporary local DB, inserts three rows, runs a vector
-search, and checks that the nearest hit is `"bar"`.
+The smoke test creates a temporary database under `/tmp`, inserts three rows,
+runs a vector search, and verifies that the nearest result is correct.
 
-## Optional: Local S3 via `pgsty/minio`
+## Optional: Local MinIO (S3-Compatible)
 
-If you want LanceDB to use an S3-compatible object store locally, this workspace
-also includes helper scripts for the community-maintained `pgsty/minio` fork and
-the companion `pgsty/mc` client fork.
-
-### Prepare local MinIO config
+### 1. Copy the config template
 
 ```bash
-cd <project-root>
 cp onboard/minio.env.example onboard/minio.env
 ```
 
-Default values in `onboard/minio.env.example`:
+The defaults include:
 
-- endpoint: `http://127.0.0.1:9000`
-- console: `http://127.0.0.1:9001`
-- access key: `ACCESSKEY`
-- secret key: `SECRETKEY`
-- region: `us-east-1`
-- bucket: `lancedb-dev`
+- `MINIO_HOST=127.0.0.1`
+- `MINIO_PORT=9000`
+- `MINIO_CONSOLE_PORT=9001`
+- `MINIO_BUCKET=lancedb-dev`
 
-### Download the fork binaries and start the service
+This file also exports the AWS-style variables that the S3 smoke test uses:
+
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `AWS_REGION`
+- `AWS_ENDPOINT`
+- `AWS_ENDPOINT_URL`
+
+So in the normal case you only need `source onboard/minio.env`; you do not need
+to construct the AWS variables again by hand.
+
+### 2. Download and start MinIO
 
 ```bash
-cd <project-root>
 bash onboard/setup_pgsty_minio.sh
 ```
 
-This script:
-
-- downloads the latest GitHub release assets from `pgsty/minio`
-- downloads the latest GitHub release assets from `pgsty/mc`
-- installs both binaries under `local/bin/`
-- starts a single-node MinIO server with data under `local/minio/data`
-- creates the default bucket from `onboard/minio.env`
-
-Runtime artifacts are kept under `local/` and ignored by the root `.gitignore`.
-
-### Verify LanceDB can use S3 storage against local MinIO
+This is equivalent to:
 
 ```bash
-cd <project-root>
+bash onboard/install_pgsty_minio.sh
+bash onboard/start_pgsty_minio.sh
+```
+
+The install script automatically selects the matching release asset for the
+current machine:
+
+- `linux_amd64`
+- `linux_arm64`
+
+By default it downloads the latest GitHub release `tar.gz` assets from
+`pgsty/minio` and `pgsty/mc`, then verifies them against the published checksum
+file.
+
+Runtime files are stored under:
+
+```text
+local/
+├── bin/
+├── downloads/
+├── mc/
+└── minio/
+    ├── data/
+    ├── logs/minio.log
+    └── run/minio.pid
+```
+
+### 3. Verify LanceDB against local S3-compatible storage
+
+```bash
 source onboard/minio.env
 lancedb/python/.venv/bin/python onboard/lancedb_s3_smoke_test.py
 ```
 
 The S3 smoke test:
 
-- connects to `s3://$MINIO_BUCKET/...` with LanceDB `storage_options`
-- creates a table
-- inserts rows
+- connects to `s3://$MINIO_BUCKET/...`
+- creates a temporary table
+- inserts test rows
 - runs a vector search
-- drops the temporary database prefix after validation
+- drops the temporary database prefix on success
 
-### Stop the local MinIO service
+### 4. Stop MinIO
 
 ```bash
-cd <project-root>
 bash onboard/stop_pgsty_minio.sh
 ```
 
-## Developer Quick Reference
+The stop script sends `TERM` first and falls back to `KILL` if needed, so it
+does not leave behind a removed pid file while the process is still alive.
 
-### Enter the local dev environment
+## WSL Recommendations
+
+- Prefer keeping the repo on the Linux filesystem inside WSL, for example
+  `~/workspace/...`, instead of building from `/mnt/c/...`.
+- `python_env_check.py` and the smoke tests intentionally use `/tmp` for
+  temporary files to avoid common Windows-mounted filesystem issues.
+- If your WSL setup has multiple Python shims, prefer the real interpreter found
+  by `uv python find`.
+
+## Common Developer Commands
+
+Enter the local development environment:
 
 ```bash
 cd <project-root>
@@ -309,94 +292,101 @@ source onboard/env.sh
 . lancedb/python/.venv/bin/activate
 ```
 
-### Confirm you are using the local editable install
+Confirm that you are importing the editable local install:
 
 ```bash
 python -c "import lancedb; print(lancedb.__version__); print(lancedb.__file__)"
 ```
 
-`lancedb.__file__` should point back into this repo, for example under
-`python/python/lancedb`.
-
-### When do you need to rebuild?
-
-- Pure Python changes under `python/python/lancedb/` are usually picked up
-  immediately by the editable install.
-- Rust changes under `python/src/` or `rust/lancedb/` require a rebuild.
-- If unsure, just re-run the one-command build:
+Rebuild:
 
 ```bash
 bash onboard/build_lancedb.sh
 ```
 
-### Install the full contributor dependency set
-
-The lightweight onboard build installs runtime dependencies only. If you want
-to run the Python test suite and repo checks the same way maintainers do, use:
+Install a fuller contributor dependency set:
 
 ```bash
-cd <project-root>
-source onboard/env.sh
-cd lancedb/python
+cd <project-root>/lancedb/python
 . .venv/bin/activate
 maturin develop -j "$CARGO_BUILD_JOBS" --extras tests,dev,embeddings
 ```
 
-### Common test commands
-
-Run the default Python test selection from the repo Makefile:
+Common test commands:
 
 ```bash
-cd <project-root>/lancedb/python
-. .venv/bin/activate
 pytest python/tests -vv --durations=10 -m "not slow and not s3_test"
-```
-
-Run one file:
-
-```bash
 pytest -vv python/tests/test_db.py
-```
-
-Run one test:
-
-```bash
 pytest -vv python/tests/test_db.py::test_basic
 ```
 
-### Common formatting and lint commands
+## Troubleshooting
+
+### `install_prereqs.sh` fails immediately
+
+First confirm the machine already has:
+
+- `bash`
+- `curl`
+- `tar`
+
+If any of those are missing, the bootstrap flow cannot continue.
+
+### `uv` or Python was installed but the current shell still cannot find it
+
+Run:
 
 ```bash
-cd <project-root>/lancedb/python
-. .venv/bin/activate
-cargo fmt
-ruff format python
-cargo clippy
-ruff check python
-```
-
-### Fast sanity checks during development
-
-```bash
-cd <project-root>
 source onboard/env.sh
-lancedb/python/.venv/bin/python -c "import lancedb; print(lancedb.__version__)"
-lancedb/python/.venv/bin/python onboard/lancedb_smoke_test.py
 ```
 
-## If Something Fails
+`env.sh` now prepends `~/.local/bin` automatically, so you usually do not need
+to edit your shell profile just to continue onboarding.
 
-- Downloads are slow or flaky:
-  Copy `onboard/mirror.env.example` to `onboard/mirror.env`, choose a closer
-  PyPI / Rustup mirror, and optionally apply
-  `onboard/cargo.tuna.config.toml.example`.
-- `python-env-check` fails while creating a venv:
-  Use the interpreter from `uv python find 3.12`, not the shim in
-  `~/.local/bin/python3.12`.
-- `protoc: Permission denied`:
-  Re-run `chmod +x "$HOME/.local/opt/protoc-<version>/bin/protoc"`.
-- Cargo says a helper crate "believes it's in a workspace":
-  Keep helper crates standalone by leaving an empty `[workspace]` table in
-  their `Cargo.toml`.
-- LanceDB compile is slower than expected:
-  Confirm `echo "$CARGO_BUILD_JOBS"` matches `nproc`.
+### `protoc: Permission denied`
+
+Restore execute permission:
+
+```bash
+chmod +x "$HOME/.local/opt/protoc-<version>/bin/protoc"
+```
+
+### MinIO fails to start
+
+Check the log first:
+
+```bash
+tail -n 50 local/minio/logs/minio.log
+```
+
+Then verify:
+
+- `MINIO_PORT` / `MINIO_CONSOLE_PORT` are not already in use
+- the credentials in `onboard/minio.env` are what you expect
+- the machine can reach GitHub releases
+
+### The S3 smoke test says AWS variables are missing
+
+Run:
+
+```bash
+source onboard/minio.env
+```
+
+Do not only start MinIO; also load the environment file before the S3 smoke
+test.
+
+### Compilation is slower than expected
+
+Check the parallel build setting:
+
+```bash
+source onboard/env.sh
+echo "$CARGO_BUILD_JOBS"
+```
+
+If needed, you can override it manually:
+
+```bash
+export CARGO_BUILD_JOBS=4
+```

@@ -16,6 +16,12 @@ if [[ -z "$PID" ]]; then
   exit 0
 fi
 
+if ! pid_matches_current_minio "$PID"; then
+  rm -f "$MINIO_PID_FILE"
+  echo "Removed stale pid file for a different MinIO process (pid=$PID)."
+  exit 0
+fi
+
 if kill -0 "$PID" >/dev/null 2>&1; then
   kill "$PID"
   for _ in $(seq 1 10); do
@@ -24,6 +30,21 @@ if kill -0 "$PID" >/dev/null 2>&1; then
     fi
     sleep 1
   done
+
+  if kill -0 "$PID" >/dev/null 2>&1; then
+    kill -9 "$PID"
+    for _ in $(seq 1 5); do
+      if ! kill -0 "$PID" >/dev/null 2>&1; then
+        break
+      fi
+      sleep 1
+    done
+  fi
+
+  if kill -0 "$PID" >/dev/null 2>&1; then
+    echo "Failed to stop pgsty/minio (pid=$PID)." >&2
+    exit 1
+  fi
 fi
 
 rm -f "$MINIO_PID_FILE"

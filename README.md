@@ -1,31 +1,78 @@
 # Lance Onboard
 
-This workspace keeps the upstream `lancedb` source checkout clean while storing
-local onboarding notes and helper scripts at the project root.
+This repository keeps local onboarding scripts and notes outside the upstream
+`lancedb` checkout, with the goal of helping a beginner bring up a usable
+`LanceDB + MinIO` environment from scratch on Linux or WSL.
 
 ## Layout
 
-- `lancedb/`: local checkout of the LanceDB source repository
-- `LANCEDB_LOCAL_ONBOARD.md`: step-by-step local build and onboarding notes
-- `onboard/`: helper scripts for environment setup, dependency checks, local
-  build, and smoke tests
+- `lancedb/`: local checkout of the `lancedb` source repository
+- `onboard/`: helper scripts for environment setup, validation, local builds,
+  MinIO setup, and smoke tests
+- `LANCEDB_LOCAL_ONBOARD.md`: the longer step-by-step guide with troubleshooting
+- `local/`: runtime artifacts created by the helper scripts and ignored by Git
 
-## Common Commands
-
-Run these from the project root:
+If your `lancedb` checkout is not at `./lancedb`, set this in
+`onboard/mirror.env`:
 
 ```bash
-cp onboard/mirror.env.tuna onboard/mirror.env  # optional
+export LANCEDB_REPO="/absolute/path/to/lancedb"
+```
+
+## Supported Environments
+
+The scripts are primarily meant for:
+
+- native Linux
+- Linux running inside WSL2
+
+The workflow tries hard not to depend on `apt`, `yum`, `dnf`, or another
+distro-specific package manager. By default it installs Python, Rust, `protoc`,
+and MinIO-related tooling into user-local directories.
+
+It still assumes the machine already has a few base utilities:
+
+- `bash`
+- `curl`
+- `tar`
+- common coreutils such as `mkdir`, `mktemp`, `find`, and `install`
+
+## Quick Start
+
+From the project root:
+
+```bash
+cd /path/to/lance-onboard
 source onboard/env.sh
 bash onboard/install_prereqs.sh
 bash onboard/verify_toolchain.sh
 bash onboard/build_lancedb.sh
 ```
 
-## Optional Local S3
+Then run the local smoke test:
 
-To prepare a local S3-compatible object store using the `pgsty/minio` and
-`pgsty/mc` forks:
+```bash
+lancedb/python/.venv/bin/python onboard/lancedb_smoke_test.py
+```
+
+## Optional: Configure Mirrors
+
+Mirrors are optional. If GitHub, PyPI, or `crates.io` is slow or unstable in
+your region, copy the template first:
+
+```bash
+cp onboard/mirror.env.example onboard/mirror.env
+```
+
+If you want the ready-made TUNA preset instead:
+
+```bash
+cp onboard/mirror.env.tuna onboard/mirror.env
+```
+
+`source onboard/env.sh` will automatically load `onboard/mirror.env`.
+
+## Optional: Start Local MinIO (S3-Compatible)
 
 ```bash
 cp onboard/minio.env.example onboard/minio.env
@@ -34,11 +81,16 @@ source onboard/minio.env
 lancedb/python/.venv/bin/python onboard/lancedb_s3_smoke_test.py
 ```
 
-Stop the local MinIO server with:
+The MinIO helpers automatically pick the matching Linux release asset for the
+current architecture and store binaries, logs, and runtime data under `local/`.
+
+Stop the local MinIO service with:
 
 ```bash
 bash onboard/stop_pgsty_minio.sh
 ```
 
-For the full workflow and troubleshooting notes, see
-`LANCEDB_LOCAL_ONBOARD.md`.
+## More Detail
+
+For the full zero-to-working flow, WSL notes, and troubleshooting, see
+[`LANCEDB_LOCAL_ONBOARD.md`](/home/wcl/workspace/dev/lance-onboard/LANCEDB_LOCAL_ONBOARD.md).
