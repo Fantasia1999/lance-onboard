@@ -258,20 +258,18 @@ _rust_satisfied=false
 
 if command -v rustc >/dev/null 2>&1; then
   _rust_ver="$(rustc --version | sed 's/rustc \([^ ]*\).*/\1/')"
-  if rust_toolchain_requires_exact_version "$RUST_TOOLCHAIN"; then
-    if [[ "$_rust_ver" == "$RUST_TOOLCHAIN" ]]; then
-      skip_msg "Rust $_rust_ver already installed (matches repo toolchain)"
-      _rust_satisfied=true
-      SUMMARY+=("Rust    : skipped — repo toolchain $RUST_TOOLCHAIN already present")
-    else
-      warn "Rust $_rust_ver does not match required repo toolchain $RUST_TOOLCHAIN — will install"
-    fi
-  elif version_ge "$_rust_ver" "$RUST_MIN_VERSION"; then
+  if version_ge "$_rust_ver" "$RUST_MIN_VERSION"; then
     skip_msg "Rust $_rust_ver already installed (>= $RUST_MIN_VERSION)"
     _rust_satisfied=true
     SUMMARY+=("Rust    : skipped — $_rust_ver already present")
+    if rust_toolchain_requires_exact_version "$RUST_TOOLCHAIN" && [[ "$_rust_ver" != "$RUST_TOOLCHAIN" ]]; then
+      warn "Repo pins Rust $RUST_TOOLCHAIN, but install_prereqs.sh will keep your existing Rust $_rust_ver"
+      if command -v rustup >/dev/null 2>&1; then
+        warn "Manual cargo/maturin commands run inside lancedb may still auto-install/use $RUST_TOOLCHAIN because of lancedb/rust-toolchain.toml"
+      fi
+    fi
   else
-    warn "Rust $_rust_ver is below minimum $RUST_MIN_VERSION — will update"
+    warn "Rust $_rust_ver is below minimum $RUST_MIN_VERSION — will install $RUST_TOOLCHAIN"
   fi
 fi
 

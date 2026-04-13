@@ -119,12 +119,17 @@ Default behavior:
 | Tool | Minimum | Default behavior |
 |---|---|---|
 | Python | >= 3.10 | If missing, bootstrap `uv` first, then install Python 3.12 with `uv` |
-| Rust | >= 1.85.0 | If `lancedb/rust-toolchain.toml` or `rust-toolchain` exists, install that exact Rust toolchain; otherwise install/update `stable` via `rustup` |
+| Rust | >= 1.85.0 | If Rust already meets the minimum version, keep it. If Rust is missing or too old, install the repo toolchain from `lancedb/rust-toolchain.toml` or `rust-toolchain` when present; otherwise install/update `stable` via `rustup` |
 | protoc | >= 34.1 | Download the official zip into `~/.local/opt` and link it into `~/.local/bin` |
 
 The script tries not to require a preinstalled Python. In other words, if the
 machine has `curl` but no `python3`, it can still bootstrap `uv` first and then
 install Python through `uv`.
+
+Note that `cargo` / `maturin` commands run inside `lancedb/` may still honor
+the repo's pinned Rust toolchain automatically via `lancedb/rust-toolchain.toml`.
+`onboard/build_lancedb.sh` is more conservative: it keeps your current Rust
+toolchain when it already meets the repo's minimum supported Rust version.
 
 The script respects these variables from `onboard/mirror.env`:
 
@@ -174,6 +179,7 @@ This script will:
 - install `pip` and `maturin`
 - automatically append the required Lance Fury indexes
 - run `maturin develop -j "$CARGO_BUILD_JOBS"` in `lancedb/python`
+- prefer your current Rust toolchain when it already satisfies the repo's minimum Rust version
 
 If the `lancedb` repo is not where the script expects it, it will stop and tell
 you to set `LANCEDB_REPO`.
@@ -407,6 +413,36 @@ Then retry:
 ```bash
 bash onboard/verify_toolchain.sh
 ```
+
+### Manual `cargo` / `maturin` commands still use the pinned Rust toolchain
+
+If you run commands directly inside `lancedb/`, `rustup` may still honor
+`lancedb/rust-toolchain.toml` and auto-select or auto-install the pinned
+toolchain.
+
+To override that for a single command, set `RUSTUP_TOOLCHAIN` explicitly:
+
+```bash
+cd lancedb
+RUSTUP_TOOLCHAIN=stable cargo build
+```
+
+Or use a specific installed toolchain version:
+
+```bash
+cd lancedb
+RUSTUP_TOOLCHAIN=1.91.0 cargo build
+```
+
+For Python builds:
+
+```bash
+cd lancedb/python
+RUSTUP_TOOLCHAIN=stable maturin develop -j "$CARGO_BUILD_JOBS"
+```
+
+This only affects the current command and does not change your global
+`rustup default`.
 
 ### `protoc: Permission denied`
 

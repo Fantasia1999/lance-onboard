@@ -31,8 +31,13 @@ distro-specific package manager. By default it installs Python, Rust, `protoc`,
 and MinIO-related tooling into user-local directories.
 
 When a local `lancedb` checkout includes `rust-toolchain.toml` or
-`rust-toolchain`, the Rust bootstrap flow installs that exact toolchain instead
-of blindly following the latest `stable` release.
+`rust-toolchain`, the Rust bootstrap flow uses that toolchain only when Rust is
+missing or below the minimum version. If you already have a new enough Rust
+toolchain, it leaves your existing install alone.
+
+`onboard/build_lancedb.sh` also prefers your current Rust toolchain when it
+already meets the repo's minimum supported Rust version, instead of forcing the
+repo-pinned toolchain for that build.
 
 It still assumes the machine already has a few base utilities:
 
