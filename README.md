@@ -4,16 +4,70 @@ This repository keeps local onboarding scripts and notes outside the upstream
 `lancedb` checkout, with the goal of helping a beginner bring up a usable
 `LanceDB + MinIO` environment from scratch on Linux or WSL.
 
+## Before You Start
+
+These scripts build against a local `lancedb` source checkout. They do not
+clone `lancedb` for you automatically.
+
+Before running anything in `onboard/`, choose one of these layouts:
+
+### Option A: clone `lancedb` into this repo
+
+Recommended for first-time setup:
+
+```bash
+cd /path/to/lance-onboard
+git clone https://github.com/lancedb/lancedb.git ./lancedb
+```
+
+### Option B: keep `lancedb` somewhere else and point the scripts at it
+
+If you already have a local `lancedb` checkout elsewhere, set
+`LANCEDB_REPO` before running `source onboard/env.sh`:
+
+```bash
+cp onboard/mirror.env.example onboard/mirror.env
+```
+
+Then edit `onboard/mirror.env` and set:
+
+```bash
+export LANCEDB_REPO="/absolute/path/to/lancedb"
+```
+
 ## Layout
 
-- `lancedb/`: local checkout of the `lancedb` source repository
+- `lancedb/`: recommended default location for the local `lancedb` checkout
+  when you clone it inside this repository
 - `onboard/`: helper scripts for environment setup, validation, local builds,
   MinIO setup, and smoke tests
 - `LANCEDB_LOCAL_SETUP.md`: the longer step-by-step guide with troubleshooting
 - `local/`: runtime artifacts created by the helper scripts and ignored by Git
 
-If your `lancedb` checkout is not at `./lancedb`, set this in
-`onboard/mirror.env`:
+Supported workspace layouts look like this:
+
+```text
+/path/to/lance-onboard/
+├── README.md
+├── LANCEDB_LOCAL_SETUP.md
+├── onboard/
+├── local/
+└── lancedb/
+```
+
+Or:
+
+```text
+/path/to/lance-onboard/
+├── README.md
+├── LANCEDB_LOCAL_SETUP.md
+├── onboard/
+└── local/
+
+/some/other/place/lancedb/
+```
+
+In the second case, set this in `onboard/mirror.env`:
 
 ```bash
 export LANCEDB_REPO="/absolute/path/to/lancedb"
@@ -68,7 +122,8 @@ sudo yum install -y gcc gcc-c++ make
 
 ## Quick Start
 
-From the project root:
+From the project root, after you have either cloned `lancedb` into `./lancedb`
+or set `LANCEDB_REPO` to an existing checkout:
 
 ```bash
 cd /path/to/lance-onboard
@@ -81,7 +136,7 @@ bash onboard/build_lancedb.sh
 Then run the local smoke test:
 
 ```bash
-lancedb/python/.venv/bin/python onboard/lancedb_smoke_test.py
+"$LANCEDB_REPO/python/.venv/bin/python" onboard/lancedb_smoke_test.py
 ```
 
 ## Optional: Configure Mirrors
@@ -107,7 +162,7 @@ cp onboard/mirror.env.tuna onboard/mirror.env
 cp onboard/minio.env.example onboard/minio.env
 bash onboard/setup_pgsty_minio.sh
 source onboard/minio.env
-lancedb/python/.venv/bin/python onboard/lancedb_s3_smoke_test.py
+"$LANCEDB_REPO/python/.venv/bin/python" onboard/lancedb_s3_smoke_test.py
 ```
 
 The MinIO helpers automatically pick the matching Linux release asset for the

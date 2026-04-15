@@ -10,6 +10,9 @@ It covers:
 - a Python-editable local install
 - an optional local MinIO-based S3-compatible environment
 
+Before running any helper script, prepare a local `lancedb` source checkout
+manually. The scripts do not clone `lancedb` for you.
+
 This guide assumes your workspace contains:
 
 - this repository
@@ -25,8 +28,9 @@ The simplest layout looks like this:
 └── lancedb/
 ```
 
-If your `lancedb` checkout is somewhere else, set
-`LANCEDB_REPO=/absolute/path/to/lancedb` in `onboard/mirror.env`.
+If you do not want to put `lancedb/` under this repository, keep it somewhere
+else and set `LANCEDB_REPO=/absolute/path/to/lancedb` in
+`onboard/mirror.env` before `source onboard/env.sh`.
 
 ## Scope
 
@@ -100,7 +104,7 @@ source onboard/env.sh
 That script does a few important things:
 
 - loads `onboard/mirror.env` automatically if it exists
-- points `LANCEDB_REPO` at `./lancedb` by default
+- points `LANCEDB_REPO` at `./lancedb` by default when that directory exists
 - prepends `~/.local/bin` and `~/.cargo/bin` to `PATH`
 - tries to discover `PYTHON_BIN`
 - exports `CARGO_BUILD_JOBS`
@@ -175,10 +179,10 @@ bash onboard/build_lancedb.sh
 
 This script will:
 
-- create `lancedb/python/.venv` using `PYTHON_BIN`
+- create `"$LANCEDB_REPO/python/.venv"` using `PYTHON_BIN`
 - install `pip` and `maturin`
 - automatically append the required Lance Fury indexes
-- run `maturin develop -j "$CARGO_BUILD_JOBS"` in `lancedb/python`
+- run `maturin develop -j "$CARGO_BUILD_JOBS"` in `"$LANCEDB_REPO/python"`
 - prefer your current Rust toolchain when it already satisfies the repo's minimum Rust version
 
 If the `lancedb` repo is not where the script expects it, it will stop and tell
@@ -187,8 +191,8 @@ you to set `LANCEDB_REPO`.
 ### 7. Run the local smoke test
 
 ```bash
-lancedb/python/.venv/bin/python -c "import lancedb; print(lancedb.__version__)"
-lancedb/python/.venv/bin/python onboard/lancedb_smoke_test.py
+"$LANCEDB_REPO/python/.venv/bin/python" -c "import lancedb; print(lancedb.__version__)"
+"$LANCEDB_REPO/python/.venv/bin/python" onboard/lancedb_smoke_test.py
 ```
 
 The smoke test creates a temporary database under `/tmp`, inserts three rows,
@@ -260,7 +264,7 @@ local/
 
 ```bash
 source onboard/minio.env
-lancedb/python/.venv/bin/python onboard/lancedb_s3_smoke_test.py
+"$LANCEDB_REPO/python/.venv/bin/python" onboard/lancedb_s3_smoke_test.py
 ```
 
 The S3 smoke test:
@@ -296,7 +300,7 @@ Enter the local development environment:
 ```bash
 cd <project-root>
 source onboard/env.sh
-. lancedb/python/.venv/bin/activate
+. "$LANCEDB_REPO/python/.venv/bin/activate"
 ```
 
 Confirm that you are importing the editable local install:
@@ -314,7 +318,7 @@ bash onboard/build_lancedb.sh
 Install a fuller contributor dependency set:
 
 ```bash
-cd <project-root>/lancedb/python
+cd "$LANCEDB_REPO/python"
 . .venv/bin/activate
 maturin develop -j "$CARGO_BUILD_JOBS" --extras tests,dev,embeddings
 ```
@@ -416,28 +420,28 @@ bash onboard/verify_toolchain.sh
 
 ### Manual `cargo` / `maturin` commands still use the pinned Rust toolchain
 
-If you run commands directly inside `lancedb/`, `rustup` may still honor
-`lancedb/rust-toolchain.toml` and auto-select or auto-install the pinned
+If you run commands directly inside `"$LANCEDB_REPO"`, `rustup` may still honor
+`rust-toolchain.toml` there and auto-select or auto-install the pinned
 toolchain.
 
 To override that for a single command, set `RUSTUP_TOOLCHAIN` explicitly:
 
 ```bash
-cd lancedb
+cd "$LANCEDB_REPO"
 RUSTUP_TOOLCHAIN=stable cargo build
 ```
 
 Or use a specific installed toolchain version:
 
 ```bash
-cd lancedb
+cd "$LANCEDB_REPO"
 RUSTUP_TOOLCHAIN=1.91.0 cargo build
 ```
 
 For Python builds:
 
 ```bash
-cd lancedb/python
+cd "$LANCEDB_REPO/python"
 RUSTUP_TOOLCHAIN=stable maturin develop -j "$CARGO_BUILD_JOBS"
 ```
 
