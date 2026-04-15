@@ -25,6 +25,16 @@ require_command() {
   fi
 }
 
+curl_supports_option() {
+  local option="$1"
+
+  if curl --help all 2>/dev/null | grep -Fq -- "$option"; then
+    return 0
+  fi
+
+  curl --help 2>/dev/null | grep -Fq -- "$option"
+}
+
 prepend_path_once() {
   local path_entry="$1"
   case ":$PATH:" in
@@ -130,6 +140,11 @@ PROTOC_ARCHIVE_NAME="${PROTOC_ARCHIVE_NAME:-protoc-${PROTOC_VERSION}-${_PROTOC_O
 RUSTUP_INIT_URL="${RUSTUP_INIT_URL:-https://sh.rustup.rs}"
 PROTOC_DOWNLOAD_URL="${PROTOC_DOWNLOAD_URL:-https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/${PROTOC_ARCHIVE_NAME}}"
 CURL_RETRY_COUNT="${CURL_RETRY_COUNT:-5}"
+CURL_RETRY_ARGS=(--retry "$CURL_RETRY_COUNT" --retry-delay 2)
+
+if curl_supports_option "--retry-all-errors"; then
+  CURL_RETRY_ARGS+=(--retry-all-errors)
+fi
 
 SUMMARY=()   # collects one-line descriptions of what happened
 
@@ -140,7 +155,7 @@ ensure_uv() {
 
   info "Installing uv via the official installer …"
   prepend_path_once "$HOME/.local/bin"
-  curl --retry "$CURL_RETRY_COUNT" --retry-all-errors --retry-delay 2 -LsSf \
+  curl "${CURL_RETRY_ARGS[@]}" -LsSf \
     "$UV_INSTALLER_URL" | env UV_NO_MODIFY_PATH=1 sh
 
   if command -v uv >/dev/null 2>&1; then
@@ -276,7 +291,7 @@ fi
 if ! $_rust_satisfied; then
   if [[ ! -x "$HOME/.cargo/bin/rustup" ]]; then
     info "Installing Rust ($RUST_TOOLCHAIN) via rustup …"
-    curl --retry "$CURL_RETRY_COUNT" --retry-all-errors --retry-delay 2 \
+    curl "${CURL_RETRY_ARGS[@]}" \
       --proto '=https' --tlsv1.2 -sSf "$RUSTUP_INIT_URL" | \
       sh -s -- -y --default-toolchain "$RUST_TOOLCHAIN" --profile minimal
     # Reload so rustc is visible.
@@ -338,7 +353,7 @@ if ! $_protoc_satisfied; then
   rm -rf "$INSTALL_DIR"/*
 
   info "Downloading protoc $PROTOC_VERSION for ${_PROTOC_OS}/${_PROTOC_ARCH} …"
-  curl --retry "$CURL_RETRY_COUNT" --retry-all-errors --retry-delay 2 -L \
+  curl "${CURL_RETRY_ARGS[@]}" -L \
     "$PROTOC_DOWNLOAD_URL" -o "$TMP_ZIP"
   "$_py_bin" -m zipfile -e "$TMP_ZIP" "$INSTALL_DIR"
   chmod +x "$INSTALL_DIR/bin/protoc"
